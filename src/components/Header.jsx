@@ -7,7 +7,8 @@ import {
   LogOut, 
   Menu, 
   X,
-  User
+  User,
+  Users
 } from 'lucide-react';
 import Logo from '../assets/55957344485-1.png';
 
@@ -19,6 +20,7 @@ function Header({ isAuthenticated, handleLogout, currentPage = 'products' }) {
     if (path === '/products') return 'products';
     if (path === '/invoices') return 'invoices';
     if (path === '/accounts') return 'accounts';
+    if (path === '/customer-details') return 'customer-details';
     return 'dashboard';
   };
 
@@ -27,6 +29,7 @@ function Header({ isAuthenticated, handleLogout, currentPage = 'products' }) {
     { name: 'Products', href: '/products', icon: Package, key: 'products' },
     { name: 'Invoices', href: '/invoices', icon: FileText, key: 'invoices' },
     { name: 'Accounts', href: '/accounts', icon: CreditCard, key: 'accounts' },
+    { name: 'Customer-details', href: '/customer-details', icon: Users, key: 'customer-details' },
   ];
 
   const handleMobileMenuToggle = () => {

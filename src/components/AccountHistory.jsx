@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Plus, TrendingUp, TrendingDown, Calendar, FileText, DollarSign } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, Calendar, FileText, DollarSign, Wallet } from 'lucide-react';
 import axios from 'axios';
 
 function AccountHistory() {
   const [accounts, setAccounts] = useState([]);
+  const [invoices, setInvoices] = useState([]);
   const [form, setForm] = useState({ accountType: 'Accounts Receivable', type: 'credit', amount: 0, description: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -25,7 +26,25 @@ function AccountHistory() {
         setError(error.response?.data?.error || 'Failed to fetch account history');
       }
     };
+
+    const fetchInvoices = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          throw new Error('No token found. Please log in.');
+        }
+        const response = await axios.get('http://localhost:5000/api/invoices', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setInvoices(Array.isArray(response.data) ? response.data : []);
+      } catch (error) {
+        console.error('Error fetching invoices:', error.response?.data || error.message);
+        setError(error.response?.data?.error || 'Failed to fetch invoices');
+      }
+    };
+
     fetchAccounts();
+    fetchInvoices();
   }, []);
 
   const handleSubmit = async (e) => {
@@ -60,14 +79,18 @@ function AccountHistory() {
   // Get unique customers for filter
   const customers = [...new Set(accounts.map((acc) => acc.invoiceId?.customer).filter(Boolean))];
 
-  // Filter accounts by customer
+  // Filter accounts and invoices by customer
   const filteredAccounts = customerFilter === 'all'
     ? accounts
     : accounts.filter((acc) => acc.invoiceId?.customer === customerFilter);
 
+  const filteredInvoices = customerFilter === 'all'
+    ? invoices
+    : invoices.filter((inv) => inv.customer === customerFilter);
+
   // Calculate totals for Accounts Receivable only
-  const creditEntries = filteredAccounts.filter((acc) => acc.type === 'credit');
-  const debitEntries = filteredAccounts.filter((acc) => acc.type === 'debit');
+  const creditEntries = filteredAccounts.filter((acc) => acc.type === 'credit' && acc.accountType === 'Accounts Receivable');
+  const debitEntries = filteredAccounts.filter((acc) => acc.type === 'debit' && acc.accountType === 'Accounts Receivable');
 
   const totalCredit = creditEntries.length > 0
     ? creditEntries.reduce((sum, acc) => sum + (acc.amount || 0), 0)
@@ -77,9 +100,11 @@ function AccountHistory() {
     ? debitEntries.reduce((sum, acc) => sum + (acc.amount || 0), 0)
     : 0;
 
-  const balance = totalDebit > 0 && totalCredit > 0
-    ? totalCredit - totalDebit
-    : totalCredit || 0;
+  const totalPending = filteredInvoices.length > 0
+    ? filteredInvoices.reduce((sum, inv) => sum + (inv.totalPendingAmount || 0), 0)
+    : 0;
+
+  const balance = totalCredit - totalDebit;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
@@ -116,7 +141,7 @@ function AccountHistory() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-6 shadow-2xl border border-slate-700/50">
             <div className="flex items-center justify-between">
               <div>
@@ -144,13 +169,27 @@ function AccountHistory() {
           <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-6 shadow-2xl border border-slate-700/50">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-400 text-sm">Balance (A/R)</p>
+                <p className="text-gray-400 text-sm">Total Pending</p>
+                <p className={`text-2xl font-bold ${totalPending >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  ₹{totalPending.toLocaleString('en-IN')}
+                </p>
+              </div>
+              <div className={`${totalPending >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'} p-3 rounded-xl`}>
+                <DollarSign className={`w-6 h-6 ${totalPending >= 0 ? 'text-emerald-400' : 'text-red-400'}`} />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-6 shadow-2xl border border-slate-700/50">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-400 text-sm">Total Balance (A/R)</p>
                 <p className={`text-2xl font-bold ${balance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                   ₹{balance.toLocaleString('en-IN')}
                 </p>
               </div>
               <div className={`${balance >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'} p-3 rounded-xl`}>
-                <DollarSign className={`w-6 h-6 ${balance >= 0 ? 'text-emerald-400' : 'text-red-400'}`} />
+                <Wallet className={`w-6 h-6 ${balance >= 0 ? 'text-emerald-400' : 'text-red-400'}`} />
               </div>
             </div>
           </div>

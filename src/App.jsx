@@ -8,6 +8,7 @@ import Register from './components/Register';
 import { useState } from 'react';
 import './index.css'
 import Header from './components/Header';
+import CustomerDetails from './components/CustomerDetails';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
@@ -25,6 +26,7 @@ function App() {
     if (path === '/products') return 'products';
     if (path === '/invoices') return 'invoices';
     if (path === '/accounts') return 'accounts';
+    if (path === '/customer-details') return 'customer-details';
     return 'dashboard';
   };
 
@@ -54,6 +56,10 @@ function App() {
           <Route
             path="/accounts"
             element={isAuthenticated ? <AccountHistory /> : <Navigate to="/login" />}
+          />
+           <Route
+            path="/customer-details"
+            element={isAuthenticated ? <CustomerDetails /> : <Navigate to="/login" />}
           />
         </Routes>
       </div>
