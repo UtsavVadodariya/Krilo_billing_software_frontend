@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Search, Edit2, Save, X, FileText, User, Users } from 'lucide-react';
+import { baseUrl } from '../utils/baseUrl';
+
 
 function CustomerDetails() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -19,7 +21,8 @@ function CustomerDetails() {
       }
       console.log('Fetching invoices with token:', token.substring(0, 20) + '...');
       
-      const url = new URL('http://localhost:5000/api/invoices/customer');
+      // const url = new URL('https://krilo-billing-software-backend.onrender.com/api/invoices/customer');
+      const url = new URL(`${baseUrl}/api/invoices/customer`);
       url.searchParams.append('customerName', searchTerm.trim());
       
       const response = await fetch(url, {
@@ -63,7 +66,8 @@ function CustomerDetails() {
         throw new Error('Total received cannot exceed total amount');
       }
       
-      const response = await fetch(`http://localhost:5000/api/invoices/${invoiceId}`, {
+      // const response = await fetch(`https://krilo-billing-software-backend.onrender.com/api/invoices/${invoiceId}`, {
+      const response = await fetch(`${baseUrl}/api/invoices/${invoiceId}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',

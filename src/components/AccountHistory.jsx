@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Plus, TrendingUp, TrendingDown, Calendar, FileText, DollarSign, Wallet } from 'lucide-react';
 import axios from 'axios';
+import { baseUrl } from '../utils/baseUrl';
+
 
 function AccountHistory() {
   const [accounts, setAccounts] = useState([]);
@@ -17,7 +19,8 @@ function AccountHistory() {
         if (!token) {
           throw new Error('No token found. Please log in.');
         }
-        const response = await axios.get('http://localhost:5000/api/accounts', {
+        // const response = await axios.get('https://krilo-billing-software-backend.onrender.com/api/accounts', {
+        const response = await axios.get(`${baseUrl}/api/accounts`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         setAccounts(response.data);
@@ -33,7 +36,8 @@ function AccountHistory() {
         if (!token) {
           throw new Error('No token found. Please log in.');
         }
-        const response = await axios.get('http://localhost:5000/api/invoices', {
+        // const response = await axios.get('https://krilo-billing-software-backend.onrender.com/api/invoices', {
+        const response = await axios.get(`${baseUrl}/api/invoices`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         setInvoices(Array.isArray(response.data) ? response.data : []);
@@ -57,7 +61,8 @@ function AccountHistory() {
       if (!token) {
         throw new Error('No token found. Please log in.');
       }
-      await axios.post('http://localhost:5000/api/accounts', form, {
+      // await axios.post('https://krilo-billing-software-backend.onrender.com/api/accounts', form, {
+      await axios.post(`${baseUrl}/api/accounts`, form, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const newEntry = {

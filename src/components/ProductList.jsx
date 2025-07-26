@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Package, Plus, Search, Filter, Edit, Trash2, DollarSign, Box, X } from 'lucide-react';
+import { baseUrl } from '../utils/baseUrl';
+
 
 function ProductList() {
   const [products, setProducts] = useState([]);
@@ -22,7 +24,8 @@ function ProductList() {
     const fetchProducts = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await fetch('http://localhost:5000/api/products', {
+        // const response = await fetch('https://krilo-billing-software-backend.onrender.com/api/products', {
+        const response = await fetch(`${baseUrl}/api/products`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await response.json();
@@ -55,7 +58,8 @@ function ProductList() {
       let response;
       if (editProductId) {
         // Update existing product
-        response = await fetch(`http://localhost:5000/api/products/${editProductId}`, {
+        // response = await fetch(`https://krilo-billing-software-backend.onrender.com/api/products/${editProductId}`, {
+        response = await fetch(`${baseUrl}/api/products/${editProductId}`, {
           method: 'PUT',
           headers: { 
             'Content-Type': 'application/json',
@@ -66,7 +70,8 @@ function ProductList() {
         console.log('Product updated:', await response.json());
       } else {
         // Create new product
-        response = await fetch('http://localhost:5000/api/products', {
+        // response = await fetch('https://krilo-billing-software-backend.onrender.com/api/products', {
+        response = await fetch(`${baseUrl}/api/products`, {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
@@ -78,7 +83,8 @@ function ProductList() {
       }
 
       // Refresh product list
-      const refreshResponse = await fetch('http://localhost:5000/api/products', {
+      // const refreshResponse = await fetch('https://krilo-billing-software-backend.onrender.com/api/products', {
+      const refreshResponse = await fetch(`${baseUrl}/api/products`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const refreshedData = await refreshResponse.json();
@@ -110,14 +116,16 @@ function ProductList() {
     if (!window.confirm('Are you sure you want to delete this product?')) return;
     try {
       const token = localStorage.getItem('token');
-      await fetch(`http://localhost:5000/api/products/${productId}`, {
+      // await fetch(`https://krilo-billing-software-backend.onrender.com/api/products/${productId}`, {
+      await fetch(`${baseUrl}/api/products/${productId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
       console.log('Product deleted:', productId);
       
       // Refresh product list
-      const response = await fetch('http://localhost:5000/api/products', {
+      // const response = await fetch('https://krilo-billing-software-backend.onrender.com/api/products', {
+      const response = await fetch(`${baseUrl}/api/products`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();

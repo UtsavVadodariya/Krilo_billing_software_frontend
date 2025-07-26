@@ -9,6 +9,8 @@ import { useState } from 'react';
 import './index.css'
 import Header from './components/Header';
 import CustomerDetails from './components/CustomerDetails';
+import CustomerForm from './components/CustomerForm';
+import CompanySettingsForm from './components/CompanySettings';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
@@ -60,6 +62,14 @@ function App() {
            <Route
             path="/customer-details"
             element={isAuthenticated ? <CustomerDetails /> : <Navigate to="/login" />}
+          />
+           <Route
+            path="/customer"
+            element={isAuthenticated ? <CustomerForm /> : <Navigate to="/login" />}
+          />
+           <Route
+            path="/company-settings"
+            element={isAuthenticated ? <CompanySettingsForm /> : <Navigate to="/login" />}
           />
         </Routes>
       </div>

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Package, FileText, CreditCard, TrendingUp, Users, DollarSign } from 'lucide-react';
 import axios from 'axios';
 import Header from './Header';
+import { baseUrl } from '../utils/baseUrl';
+
 
 function Dashboard() {
   const [stats, setStats] = useState({ products: 0, invoices: 0, accounts: 0 });
@@ -11,13 +13,16 @@ function Dashboard() {
       try {
         const token = localStorage.getItem('token');
         const [products, invoices, accounts] = await Promise.all([
-          axios.get('http://localhost:5000/api/products', {
+          // axios.get('https://krilo-billing-software-backend.onrender.com/api/products', {
+          axios.get(`${baseUrl}/api/products`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          axios.get('http://localhost:5000/api/invoices/sales_invoice', {
+          // axios.get('https://krilo-billing-software-backend.onrender.com/api/invoices/sales_invoice', {
+          axios.get(`${baseUrl}/api/invoices/sales_invoice`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          axios.get('http://localhost:5000/api/accounts', {
+          // axios.get('https://krilo-billing-software-backend.onrender.com/api/accounts', {
+          axios.get(`${baseUrl}/api/accounts`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);

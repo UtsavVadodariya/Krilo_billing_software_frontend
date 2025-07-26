@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
 import logo from '../assets/55957344485.png'
+import { baseUrl } from '../utils/baseUrl';
 
 function Login({ onLogin }) {
   const [form, setForm] = useState({ email: '', password: '' });
@@ -16,7 +17,8 @@ function Login({ onLogin }) {
 
     try {
       // Original API call logic
-      const response = await fetch('http://localhost:5000/api/auth/login', {
+      // const response = await fetch('https://krilo-billing-software-backend.onrender.com/api/auth/login', {
+      const response = await fetch(`${baseUrl}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -136,14 +138,14 @@ function Login({ onLogin }) {
           {/* Divider */}
 
           {/* Register Link */}
-          {/* <div className="mt-6 text-center">
+          <div className="mt-6 text-center">
             <p className="text-gray-400">
               Don't have an account?{' '}
               <a href="/register" className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
                 Create Account
               </a>
             </p>
-          </div>  */}
+          </div> 
         </div>
 
         {/* Footer */}

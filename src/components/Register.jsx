@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
 import logo from '../assets/55957344485.png'
+import { baseUrl } from '../utils/baseUrl';
 
 
 function Register({ onLogin }) {
@@ -16,7 +17,8 @@ function Register({ onLogin }) {
 
     try {
       // Original API call logic with axios simulation
-      const response = await fetch('http://localhost:5000/api/auth/register', {
+      // const response = await fetch('https://krilo-billing-software-backend.onrender.com/api/auth/register', {
+      const response = await fetch(`${baseUrl}/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
