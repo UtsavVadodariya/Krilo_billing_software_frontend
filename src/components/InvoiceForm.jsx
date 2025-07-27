@@ -10,6 +10,7 @@ function InvoiceForm() {
     type: 'sales_invoice',
     products: [''],
     quantities: [1],
+    gstAmounts: [0],
     total: 0,
     showPaymentFields: true,
     totalReceived: '',
@@ -24,6 +25,47 @@ function InvoiceForm() {
   const [isPrintReady, setIsPrintReady] = useState(false);
   const [imageErrors, setImageErrors] = useState({ logo: false, sign: false });
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState(null);
+
+  // Number to Words function (matching backend)
+  const numberToWords = (num) => {
+    if (num === 0) return 'Zero Rupees only';
+    
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+    const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+    const convertHundreds = (n) => {
+      let result = '';
+      if (n >= 100) {
+        result += ones[Math.floor(n / 100)] + ' Hundred ';
+        n %= 100;
+      }
+      if (n >= 20) {
+        result += tens[Math.floor(n / 10)] + ' ';
+        n %= 10;
+      } else if (n >= 10) {
+        result += teens[n - 10] + ' ';
+        return result;
+      }
+      if (n > 0) {
+        result += ones[n] + ' ';
+      }
+      return result;
+    };
+
+    const crores = Math.floor(num / 10000000);
+    const lakhs = Math.floor((num % 10000000) / 100000);
+    const thousands = Math.floor((num % 100000) / 1000);
+    const hundreds = num % 1000;
+
+    let result = '';
+    if (crores > 0) result += convertHundreds(crores) + 'Crore ';
+    if (lakhs > 0) result += convertHundreds(lakhs) + 'Lakh ';
+    if (thousands > 0) result += convertHundreds(thousands) + 'Thousand ';
+    if (hundreds > 0) result += convertHundreds(hundreds);
+
+    return result.trim() + ' Rupees only';
+  };
 
   useEffect(() => {
     const fetchCompanySettings = async () => {
@@ -83,7 +125,10 @@ function InvoiceForm() {
         });
         if (!response.ok) throw new Error('Failed to fetch invoices');
         const data = await response.json();
-        setInvoices(Array.isArray(data) ? data : []);
+        const sortedInvoices = Array.isArray(data)
+          ? data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+          : [];
+        setInvoices(sortedInvoices);
       } catch (err) {
         console.error('Fetch invoices error:', err);
         setError('Failed to fetch invoice history: ' + err.message);
@@ -139,6 +184,7 @@ function InvoiceForm() {
         type: formData.type,
         products: formData.products.filter((p) => p !== ''),
         quantities: formData.quantities,
+        gstAmounts: formData.gstAmounts,
         total: formData.total,
         totalReceived: parsedTotalReceived,
       };
@@ -159,13 +205,14 @@ function InvoiceForm() {
 
       const data = await response.json();
       console.log('Invoice created:', data);
-      setInvoices([...invoices, data]);
+      setInvoices([data, ...invoices]);
       setFormData({
         customerId: '',
         customerDetails: null,
         type: 'sales_invoice',
         products: [''],
         quantities: [1],
+        gstAmounts: [0],
         total: 0,
         showPaymentFields: true,
         totalReceived: '',
@@ -180,16 +227,24 @@ function InvoiceForm() {
   const handleProductChange = (index, field, value) => {
     const newProducts = [...formData.products];
     const newQuantities = [...formData.quantities];
+    const newGstAmounts = [...formData.gstAmounts];
+
     if (field === 'product') {
       newProducts[index] = value;
+      const selectedProduct = products.find((p) => p._id === value);
+      newGstAmounts[index] = selectedProduct ? (selectedProduct.price * (selectedProduct.gst || 0) / 100) * (newQuantities[index] || 0) : 0;
     } else {
       newQuantities[index] = parseInt(value) || 0;
+      const selectedProduct = products.find((p) => p._id === newProducts[index]);
+      newGstAmounts[index] = selectedProduct ? (selectedProduct.price * (selectedProduct.gst || 0) / 100) * (newQuantities[index] || 0) : 0;
     }
+
     const total = newProducts.reduce((sum, prodId, i) => {
       const product = products.find((p) => p._id === prodId);
-      return sum + (product ? product.price * (newQuantities[i] || 0) : 0);
+      return sum + (product ? product.price * (newQuantities[i] || 0) * (1 + (product.gst || 0) / 100) : 0);
     }, 0);
-    setFormData({ ...formData, products: newProducts, quantities: newQuantities, total });
+
+    setFormData({ ...formData, products: newProducts, quantities: newQuantities, gstAmounts: newGstAmounts, total });
   };
 
   const addProductField = () => {
@@ -197,17 +252,19 @@ function InvoiceForm() {
       ...formData,
       products: [...formData.products, ''],
       quantities: [...formData.quantities, 1],
+      gstAmounts: [...formData.gstAmounts, 0],
     });
   };
 
   const removeProductField = (index) => {
     const newProducts = formData.products.filter((_, i) => i !== index);
     const newQuantities = formData.quantities.filter((_, i) => i !== index);
+    const newGstAmounts = formData.gstAmounts.filter((_, i) => i !== index);
     const total = newProducts.reduce((sum, prodId, i) => {
       const product = products.find((p) => p._id === prodId);
-      return sum + (product ? product.price * (newQuantities[i] || 0) : 0);
+      return sum + (product ? product.price * (newQuantities[i] || 0) * (1 + (product.gst || 0) / 100) : 0);
     }, 0);
-    setFormData({ ...formData, products: newProducts, quantities: newQuantities, total });
+    setFormData({ ...formData, products: newProducts, quantities: newQuantities, gstAmounts: newGstAmounts, total });
   };
 
   const handlePrint = useReactToPrint({
@@ -283,6 +340,68 @@ function InvoiceForm() {
     setError(`Failed to load ${type} image. Check server configuration.`);
   };
 
+  // GST calculation logic for inter-state/intra-state
+  const companyState = companySettings?.state || '';
+  const customerState = formData.customerDetails?.state || '';
+  const isInterState = companyState.toLowerCase() !== customerState.toLowerCase();
+
+  // HSN-wise summary
+  const hsnSummary = {};
+  let totalTaxableAmount = 0;
+  let totalCGST = 0;
+  let totalSGST = 0;
+  let totalIGST = 0;
+  let totalAmount = 0;
+
+  formData.products.forEach((prodId, index) => {
+    const product = products.find((p) => p._id === prodId);
+    if (product) {
+      const quantity = formData.quantities[index] || 0;
+      const price = product.price || 0;
+      const gstRate = product.gst || 0;
+      const hsn = product.hsn || '28391900';
+      const taxableAmount = price * quantity;
+
+      if (!hsnSummary[hsn]) {
+        hsnSummary[hsn] = {
+          hsn,
+          gstRate,
+          taxableAmount: 0,
+          cgstAmount: 0,
+          sgstAmount: 0,
+          igstAmount: 0,
+          totalAmount: 0,
+        };
+      }
+
+      hsnSummary[hsn].taxableAmount += taxableAmount;
+      if (isInterState) {
+        const igstAmount = (taxableAmount * gstRate) / 100;
+        hsnSummary[hsn].igstAmount += igstAmount;
+        hsnSummary[hsn].totalAmount += taxableAmount + igstAmount;
+      } else {
+        const cgstAmount = (taxableAmount * gstRate / 2) / 100;
+        const sgstAmount = (taxableAmount * gstRate / 2) / 100;
+        hsnSummary[hsn].cgstAmount += cgstAmount;
+        hsnSummary[hsn].sgstAmount += sgstAmount;
+        hsnSummary[hsn].totalAmount += taxableAmount + cgstAmount + sgstAmount;
+      }
+
+      totalTaxableAmount += taxableAmount;
+      if (isInterState) {
+        totalIGST += (taxableAmount * gstRate) / 100;
+      } else {
+        totalCGST += (taxableAmount * gstRate / 2) / 100;
+        totalSGST += (taxableAmount * gstRate / 2) / 100;
+      }
+      totalAmount += isInterState
+        ? taxableAmount + (taxableAmount * gstRate) / 100
+        : taxableAmount + (taxableAmount * gstRate) / 100;
+    }
+  });
+
+  const hsnSummaryArray = Object.values(hsnSummary);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
       <style>
@@ -299,8 +418,9 @@ function InvoiceForm() {
               width: 100%;
               background: white;
               color: black;
-              padding: 20px;
+              padding: 30px;
               box-sizing: border-box;
+              font-family: Arial, sans-serif;
             }
             .no-print {
               display: none !important;
@@ -311,9 +431,19 @@ function InvoiceForm() {
             }
             th {
               background-color: #f0f0f0 !important;
+              font-weight: bold;
             }
-            img {
-              max-width: 100px;
+            .watermark {
+              position: absolute;
+              top: 50%;
+              left: 50%;
+              transform: translate(-50%, -50%);
+              opacity: 0.1;
+              z-index: -1;
+              pointer-events: none;
+            }
+            .bordered-box {
+              border: 1px solid #ccc;
             }
           }
         `}
@@ -394,48 +524,62 @@ function InvoiceForm() {
                   </button>
                 </div>
 
-                {formData.products.map((_, index) => (
-                  <div key={index} className="bg-slate-700/30 rounded-xl p-4 border border-slate-600/50">
-                    <div className="flex gap-4 items-end">
-                      <div className="flex-1">
-                        <label className="text-xs font-medium text-gray-400 block mb-1">Product</label>
-                        <select
-                          value={formData.products[index] || ''}
-                          onChange={(e) => handleProductChange(index, 'product', e.target.value)}
-                          className="w-full px-3 py-2 bg-slate-600/50 border border-slate-500 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 transition-all duration-300"
-                        >
-                          <option value="">Select Product</option>
-                          {products.map((product) => (
-                            <option key={product._id} value={product._id}>
-                              {product.name} (Stock: {product.stock || 0})
-                            </option>
-                          ))}
-                        </select>
+                {formData.products.map((_, index) => {
+                  const selectedProduct = products.find((p) => p._id === formData.products[index]);
+                  return (
+                    <div key={index} className="bg-slate-700/30 rounded-xl p-4 border border-slate-600/50">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="text-xs font-medium text-gray-400 block mb-1">Product</label>
+                          <select
+                            value={formData.products[index] || ''}
+                            onChange={(e) => handleProductChange(index, 'product', e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-600/50 border border-slate-500 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 transition-all duration-300"
+                          >
+                            <option value="">Select Product</option>
+                            {products.map((product) => (
+                              <option key={product._id} value={product._id}>
+                                {product.name} (Stock: {product.stock || 0}, GST: {product.gst || 0}%)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-400 block mb-1">Quantity</label>
+                          <input
+                            type="number"
+                            value={formData.quantities[index] || ''}
+                            onChange={(e) => handleProductChange(index, 'quantity', e.target.value)}
+                            placeholder="Qty"
+                            className="w-full px-3 py-2 bg-slate-600/50 border border-slate-500 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 transition-all duration-300"
+                            min="0"
+                            required
+                          />
+                        </div>
+                        <div className="flex items-end gap-2">
+                          <div className="flex-1">
+                            <label className="text-xs font-medium text-gray-400 block mb-1">GST (%)</label>
+                            <input
+                              type="text"
+                              value={selectedProduct ? `${selectedProduct.gst || 0}%` : '0%'}
+                              readOnly
+                              className="w-full px-3 py-2 bg-slate-600/50 border border-slate-500 rounded-lg text-white text-sm focus:outline-none transition-all duration-300"
+                            />
+                          </div>
+                          {formData.products.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeProductField(index)}
+                              className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg transition-all duration-300"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <div className="w-32">
-                        <label className="text-xs font-medium text-gray-400 block mb-1">Quantity</label>
-                        <input
-                          type="number"
-                          value={formData.quantities[index] || ''}
-                          onChange={(e) => handleProductChange(index, 'quantity', e.target.value)}
-                          placeholder="Qty"
-                          className="w-full px-3 py-2 bg-slate-600/50 border border-slate-500 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 transition-all duration-300"
-                          min="0"
-                          required
-                        />
-                      </div>
-                      {formData.products.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeProductField(index)}
-                          className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg transition-all duration-300"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="space-y-4">
@@ -466,8 +610,14 @@ function InvoiceForm() {
 
               <div className="bg-slate-700/30 rounded-xl p-4 border border-slate-600/50">
                 <div className="flex justify-between items-center">
-                  <span className="text-lg font-semibold text-gray-300">Total Amount:</span>
+                  <span className="text-lg font-semibold text-gray-300">Total Amount (incl. GST):</span>
                   <span className="text-2xl font-bold text-emerald-400">₹{formData.total.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center mt-2">
+                  <span className="text-sm font-medium text-gray-400">Total GST Amount:</span>
+                  <span className="text-sm font-medium text-gray-300">
+                    ₹{formData.gstAmounts.reduce((sum, amt) => sum + (amt || 0), 0).toLocaleString()}
+                  </span>
                 </div>
               </div>
 
@@ -506,75 +656,91 @@ function InvoiceForm() {
 
           {/* Preview Section */}
           <div className="bg-white text-black p-8 rounded-2xl shadow-2xl border border-gray-200 print-container">
-            <div ref={printRef} style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
-                <div>
-                  {companySettings?.companyLogo && !imageErrors.logo ? (
-                    <img
-                      src={`${baseUrl}/${companySettings.companyLogo}`}
-                      alt="Company Logo"
-                      style={{ maxWidth: '100px', marginBottom: '8px' }}
-                      onError={handleImageError('logo')}
-                    />
-                  ) : (
-                    <p style={{ fontSize: '12px', color: '#999' }}>[Logo not available]</p>
-                  )}
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  {companySettings ? (
-                    <>
-                      <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>{companySettings.companyName}</h1>
-                      <p style={{ fontSize: '12px' }}>{companySettings.address}</p>
-                      <p style={{ fontSize: '12px' }}>
-                        {companySettings.city}, {companySettings.state}, {companySettings.country} {companySettings.pincode}
+            <div ref={printRef} style={{ padding: '30px', fontFamily: 'Arial, sans-serif', position: 'relative', width: '535px', minHeight: '782px' }}>
+              {/* Watermark Logo */}
+              {companySettings?.companyLogo && !imageErrors.logo && (
+                <img
+                  src={`${baseUrl}/${companySettings.companyLogo}`}
+                  alt="Company Logo Watermark"
+                  className="watermark"
+                  style={{ maxWidth: '200px', maxHeight: '100px' }}
+                  onError={handleImageError('logo')}
+                />
+              )}
+
+              {/* Header: Tax Invoice */}
+              <div className="bordered-box" style={{ padding: '5px', textAlign: 'center', marginBottom: '15px' }}>
+                <h1 style={{ fontSize: '14px', fontWeight: 'bold' }}>Tax Invoice</h1>
+              </div>
+
+              {/* Company Info */}
+              <div style={{ textAlign: 'center', marginBottom: '15px' }}>
+                {companySettings ? (
+                  <>
+                    <h1 style={{ fontSize: '16px', fontWeight: 'bold' }}>{companySettings.companyName}</h1>
+                    {companySettings.address && <p style={{ fontSize: '9px' }}>{companySettings.address}</p>}
+                    {companySettings.city && (
+                      <p style={{ fontSize: '9px' }}>
+                        {companySettings.city}{companySettings.state ? ', ' + companySettings.state : ''}{companySettings.pincode ? ' ' + companySettings.pincode : ''}
                       </p>
-                      {companySettings.GSTIN && (
-                        <p style={{ fontSize: '12px' }}>GSTIN: {companySettings.GSTIN}</p>
-                      )}
-                      {companySettings.contactNumber && (
-                        <p style={{ fontSize: '12px' }}>Phone: {companySettings.contactNumber}</p>
-                      )}
+                    )}
+                    {companySettings.contactNumber && <p style={{ fontSize: '9px' }}>Phone no.: {companySettings.contactNumber}</p>}
+                    {companySettings.GSTIN && <p style={{ fontSize: '9px' }}>GSTIN: {companySettings.GSTIN}</p>}
+                  </>
+                ) : (
+                  <p style={{ fontSize: '9px' }}>Loading company details...</p>
+                )}
+              </div>
+
+              {/* Bill To and Invoice Details */}
+              <div className="bordered-box" style={{ display: 'flex', height: '80px', marginBottom: '15px' }}>
+                {/* Bill To (Left) */}
+                <div style={{ width: '50%', padding: '10px' }}>
+                  <p style={{ fontSize: '10px', fontWeight: 'bold' }}>Bill To</p>
+                  {formData.customerDetails ? (
+                    <>
+                      <p style={{ fontSize: '9px', fontWeight: 'bold' }}>{formData.customerDetails.name}</p>
+                      {formData.customerDetails.address && <p style={{ fontSize: '9px' }}>{formData.customerDetails.address}</p>}
+                      {formData.customerDetails.city && <p style={{ fontSize: '9px' }}>{formData.customerDetails.city}</p>}
+                      {formData.customerDetails.GSTIN && <p style={{ fontSize: '9px' }}>GSTIN Number: {formData.customerDetails.GSTIN}</p>}
+                      {formData.customerDetails.state && <p style={{ fontSize: '9px' }}>State: {formData.customerDetails.state}</p>}
                     </>
                   ) : (
-                    <p style={{ fontSize: '12px' }}>Loading company details...</p>
+                    <p style={{ fontSize: '9px', fontWeight: 'bold' }}>{formData.customer || 'Customer Name'}</p>
                   )}
                 </div>
-              </div>
-
-              <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-                <p style={{ fontSize: '16px', fontWeight: '600' }}>Tax Invoice</p>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
-                <div>
-                  <p style={{ fontSize: '14px' }}><strong>Customer:</strong> {formData.customerDetails?.name || 'N/A'}</p>
-                  {formData.customerDetails && (
-                    <>
-                      <p style={{ fontSize: '14px' }}><strong>Address:</strong> {formData.customerDetails.address || '-'}</p>
-                      <p style={{ fontSize: '14px' }}><strong>City:</strong> {formData.customerDetails.city || '-'}</p>
-                      <p style={{ fontSize: '14px' }}><strong>State:</strong> {formData.customerDetails.state || '-'}</p>
-                      <p style={{ fontSize: '14px' }}><strong>Country:</strong> {formData.customerDetails.country || '-'}</p>
-                      <p style={{ fontSize: '14px' }}><strong>Pincode:</strong> {formData.customerDetails.pincode || '-'}</p>
-                      {formData.customerDetails.GSTIN && (
-                        <p style={{ fontSize: '14px' }}><strong>GSTIN:</strong> {formData.customerDetails.GSTIN}</p>
-                      )}
-                    </>
-                  )}
-                  <p style={{ fontSize: '14px' }}><strong>Invoice Type:</strong> {formData.type.replace('_', ' ').toUpperCase()}</p>
-                </div>
-                <div>
-                  <p style={{ fontSize: '14px' }}><strong>Date:</strong> {new Date().toLocaleDateString('en-IN')}</p>
+                {/* Invoice Details (Right) */}
+                <div style={{ width: '50%', padding: '10px', textAlign: 'right' }}>
+                  <p style={{ fontSize: '10px', fontWeight: 'bold' }}>Invoice Details</p>
+                  <p style={{ fontSize: '9px' }}>Invoice No.: INV-{formData.customerId?.slice(-6) || 'XXXXXX'}</p>
+                  <p style={{ fontSize: '9px' }}>Date: {new Date().toLocaleDateString('en-GB')}</p>
+                  <p style={{ fontSize: '9px' }}>Place of Supply: {customerState || companyState || '24-Gujarat'}</p>
                 </div>
               </div>
 
-              <div style={{ border: '1px solid #ccc', borderRadius: '4px', overflow: 'hidden' }}>
+              {/* Main Invoice Table */}
+              <div className="bordered-box" style={{ marginBottom: '15px' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr style={{ backgroundColor: '#f0f0f0' }}>
-                      <th style={{ border: '1px solid #ccc', padding: '8px', textAlign: 'left', fontWeight: '600' }}>Product</th>
-                      <th style={{ border: '1px solid #ccc', padding: '8px', textAlign: 'right', fontWeight: '600' }}>Quantity</th>
-                      <th style={{ border: '1px solid #ccc', padding: '8px', textAlign: 'right', fontWeight: '600' }}>Price</th>
-                      <th style={{ border: '1px solid #ccc', padding: '8px', textAlign: 'right', fontWeight: '600' }}>Total</th>
+                    <tr style={{ backgroundColor: '#f0f0f0', height: '35px' }}>
+                      <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', textAlign: 'center', width: '25px' }}>#</th>
+                      <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', textAlign: 'left', width: '120px' }}>Item Name</th>
+                      <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', textAlign: 'center', width: '60px' }}>HSN/SAC</th>
+                      <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', textAlign: 'center', width: '40px' }}>Quantity</th>
+                      <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', textAlign: 'right', width: '60px' }}>Price/Unit</th>
+                      <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', textAlign: 'right', width: '60px' }}>Taxable Amount</th>
+                      {isInterState ? (
+                        <>
+                          <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', textAlign: 'right', width: '70px' }}>IGST</th>
+                          <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', textAlign: 'right', width: '70px' }}>Amount</th>
+                        </>
+                      ) : (
+                        <>
+                          <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', textAlign: 'right', width: '50px' }}>CGST</th>
+                          <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', textAlign: 'right', width: '50px' }}>SGST</th>
+                          <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', textAlign: 'right', width: '70px' }}>Amount</th>
+                        </>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -585,61 +751,221 @@ function InvoiceForm() {
                         index,
                       }))
                       .filter(({ product }) => product)
-                      .map(({ product, quantity, index }) => (
-                        <tr key={index} style={{ borderTop: '1px solid #ccc' }}>
-                          <td style={{ border: '1px solid #ccc', padding: '8px' }}>{product.name}</td>
-                          <td style={{ border: '1px solid #ccc', padding: '8px', textAlign: 'right' }}>{quantity}</td>
-                          <td style={{ border: '1px solid #ccc', padding: '8px', textAlign: 'right' }}>₹{product.price.toLocaleString()}</td>
-                          <td style={{ border: '1px solid #ccc', padding: '8px', textAlign: 'right' }}>₹{(product.price * quantity).toLocaleString()}</td>
-                        </tr>
-                      ))}
+                      .map(({ product, quantity, index }) => {
+                        const price = product.price || 0;
+                        const gstRate = product.gst || 0;
+                        const taxableAmount = price * quantity;
+                        const igstAmount = isInterState ? (taxableAmount * gstRate) / 100 : 0;
+                        const cgstAmount = !isInterState ? (taxableAmount * gstRate / 2) / 100 : 0;
+                        const sgstAmount = !isInterState ? (taxableAmount * gstRate / 2) / 100 : 0;
+                        const itemTotal = isInterState ? taxableAmount + igstAmount : taxableAmount + cgstAmount + sgstAmount;
+
+                        return (
+                          <tr key={index} style={{ height: '25px' }}>
+                            <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'center' }}>{index + 1}</td>
+                            <td style={{ border: '1px solid #ccc', fontSize: '8px', paddingLeft: '2px' }}>{(product.name || 'Unknown Product').toUpperCase()}</td>
+                            <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'center' }}>{product.hsn || '28391900'}</td>
+                            <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'center' }}>{quantity}</td>
+                            <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>INR {price.toFixed(2)}</td>
+                            <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>INR {taxableAmount.toFixed(2)}</td>
+                            {isInterState ? (
+                              <>
+                                <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                                  INR {igstAmount.toFixed(2)}<br />({gstRate}%)
+                                </td>
+                                <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>INR {itemTotal.toFixed(2)}</td>
+                              </>
+                            ) : (
+                              <>
+                                <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                                  INR {cgstAmount.toFixed(2)}<br />({gstRate / 2}%)
+                                </td>
+                                <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                                  INR {sgstAmount.toFixed(2)}<br />({gstRate / 2}%)
+                                </td>
+                                <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>INR {itemTotal.toFixed(2)}</td>
+                              </>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    <tr style={{ height: '25px', fontWeight: 'bold' }}>
+                      <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'center' }}>Total</td>
+                      <td style={{ border: '1px solid #ccc', fontSize: '8px' }}></td>
+                      <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'center' }}>
+                        {formData.products.filter((prodId) => products.find((p) => p._id === prodId)).length}
+                      </td>
+                      <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'center' }}>
+                        {formData.quantities.reduce((sum, qty) => sum + (qty || 0), 0)}
+                      </td>
+                      <td style={{ border: '1px solid #ccc', fontSize: '8px' }}></td>
+                      <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                        INR {totalTaxableAmount.toFixed(2)}
+                      </td>
+                      {isInterState ? (
+                        <>
+                          <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                            INR {totalIGST.toFixed(2)}
+                          </td>
+                          <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                            INR {totalAmount.toFixed(2)}
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                            INR {totalCGST.toFixed(2)}
+                          </td>
+                          <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                            INR {totalSGST.toFixed(2)}
+                          </td>
+                          <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                            INR {totalAmount.toFixed(2)}
+                          </td>
+                        </>
+                      )}
+                    </tr>
                   </tbody>
                 </table>
               </div>
 
-              <div style={{ marginTop: '24px', textAlign: 'right' }}>
-                <p style={{ fontSize: '14px' }}><strong>Total:</strong> ₹{formData.total.toLocaleString()}</p>
-                {formData.showPaymentFields && (
-                  <>
-                    <p style={{ fontSize: '14px' }}><strong>Total Received:</strong> ₹{(parseFloat(formData.totalReceived) || 0).toLocaleString()}</p>
-                    <p style={{ fontSize: '14px' }}><strong>Total Pending:</strong> ₹{(formData.total - (parseFloat(formData.totalReceived) || 0)).toLocaleString()}</p>
-                  </>
-                )}
+              {/* HSN-wise Tax Summary Table */}
+              <div className="bordered-box" style={{ marginBottom: '15px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#f0f0f0', height: '20px' }}>
+                      <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', width: isInterState ? '90px' : '80px' }}>HSN/SAC</th>
+                      <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', width: isInterState ? '90px' : '80px' }}>Taxable Amount</th>
+                      {isInterState ? (
+                        <>
+                          <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', width: '90px' }}>IGST Rate</th>
+                          <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', width: '90px' }}>IGST Amount</th>
+                          <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', width: '185px' }}>Total Amount</th>
+                        </>
+                      ) : (
+                        <>
+                          <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', width: '70px' }}>CGST Rate</th>
+                          <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', width: '70px' }}>CGST Amount</th>
+                          <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', width: '70px' }}>SGST Rate</th>
+                          <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', width: '70px' }}>SGST Amount</th>
+                          <th style={{ border: '1px solid #ccc', fontSize: '8px', fontWeight: 'bold', width: '115px' }}>Total</th>
+                        </>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hsnSummaryArray.map((hsn, index) => (
+                      <tr key={index} style={{ height: '20px' }}>
+                        <td style={{ border: '1px solid #ccc', fontSize: '8px', paddingLeft: '2px' }}>{hsn.hsn}</td>
+                        <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                          INR {hsn.taxableAmount.toFixed(2)}
+                        </td>
+                        {isInterState ? (
+                          <>
+                            <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>{hsn.gstRate}%</td>
+                            <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                              INR {hsn.igstAmount.toFixed(2)}
+                            </td>
+                            <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                              INR {hsn.totalAmount.toFixed(2)}
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>{hsn.gstRate / 2}%</td>
+                            <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                              INR {hsn.cgstAmount.toFixed(2)}
+                            </td>
+                            <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>{hsn.gstRate / 2}%</td>
+                            <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                              INR {hsn.sgstAmount.toFixed(2)}
+                            </td>
+                            <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                              INR {hsn.totalAmount.toFixed(2)}
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                    <tr style={{ height: '20px', fontWeight: 'bold' }}>
+                      <td style={{ border: '1px solid #ccc', fontSize: '8px', paddingLeft: '2px' }}>Total</td>
+                      <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                        INR {totalTaxableAmount.toFixed(2)}
+                      </td>
+                      {isInterState ? (
+                        <>
+                          <td style={{ border: '1px solid #ccc', fontSize: '8px' }}></td>
+                          <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                            INR {totalIGST.toFixed(2)}
+                          </td>
+                          <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                            INR {totalAmount.toFixed(2)}
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td style={{ border: '1px solid #ccc', fontSize: '8px' }}></td>
+                          <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                            INR {totalCGST.toFixed(2)}
+                          </td>
+                          <td style={{ border: '1px solid #ccc', fontSize: '8px' }}></td>
+                          <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                            INR {totalSGST.toFixed(2)}
+                          </td>
+                          <td style={{ border: '1px solid #ccc', fontSize: '8px', textAlign: 'right', paddingRight: '2px' }}>
+                            INR {totalAmount.toFixed(2)}
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  </tbody>
+                </table>
               </div>
 
-              {companySettings?.termsAndConditions && (
-                <div style={{ marginTop: '24px' }}>
-                  <p style={{ fontSize: '14px', fontWeight: 'bold' }}>Terms and Conditions:</p>
-                  <p style={{ fontSize: '12px', whiteSpace: 'pre-wrap' }}>{companySettings.termsAndConditions}</p>
-                </div>
-              )}
+              {/* Amount in Words */}
+              <div className="bordered-box" style={{ padding: '8px', marginBottom: '15px' }}>
+                <p style={{ fontSize: '9px', fontWeight: 'bold' }}>Invoice Amount In Words</p>
+                <p style={{ fontSize: '8px' }}>{numberToWords(Math.floor(formData.total || 0))}</p>
+              </div>
 
-              {companySettings?.bankDetails && (
-                <div style={{ marginTop: '24px' }}>
-                  <p style={{ fontSize: '14px', fontWeight: 'bold' }}>Bank Details:</p>
-                  <p style={{ fontSize: '12px' }}>Bank Name: {companySettings.bankDetails?.bankName || '-'}</p>
-                  <p style={{ fontSize: '12px' }}>Account Number: {companySettings.bankDetails?.accountNumber || '-'}</p>
-                  <p style={{ fontSize: '12px' }}>IFSC: {companySettings.bankDetails?.IFSC || '-'}</p>
-                  <p style={{ fontSize: '12px' }}>Branch: {companySettings.bankDetails?.branch || '-'}</p>
+              {/* Footer: Bank Details and Terms */}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {/* Bank Details (Left) */}
+                <div className="bordered-box" style={{ width: '267px', height: '120px', padding: '10px' }}>
+                  <p style={{ fontSize: '9px', fontWeight: 'bold' }}>Bank Details</p>
+                  <p style={{ fontSize: '8px' }}>Name: {companySettings?.bankDetails?.bankName || 'Bank Of Baroda, Motiparabdi,'}</p>
+                  <p style={{ fontSize: '8px' }}>Gujarat</p>
+                  <p style={{ fontSize: '8px' }}>Account No.: {companySettings?.bankDetails?.accountNumber || '17910200000021'}</p>
+                  <p style={{ fontSize: '8px' }}>IFSC code: {companySettings?.bankDetails?.IFSC || 'BARB0MOTIPA'}</p>
+                  <p style={{ fontSize: '8px' }}>Account Holder's Name: {companySettings?.companyName || 'Company Name'}</p>
                 </div>
-              )}
-
-              {companySettings?.companySign && !imageErrors.sign ? (
-                <div style={{ marginTop: '24px', textAlign: 'center' }}>
-                  <img
-                    src={`${baseUrl}/${companySettings.companySign}`}
-                    alt="Company Signature"
-                    style={{ maxWidth: '100px', marginTop: '10px' }}
-                    onError={handleImageError('sign')}
-                  />
-                  <p style={{ fontSize: '12px', fontWeight: '600' }}>Authorized Signatory</p>
+                {/* Terms and Signature (Right) */}
+                <div className="bordered-box" style={{ width: '258px', height: '120px', padding: '10px' }}>
+                  <p style={{ fontSize: '9px', fontWeight: 'bold' }}>Terms and conditions</p>
+                  <p style={{ fontSize: '8px', whiteSpace: 'pre-wrap' }}>
+                    {companySettings?.termsAndConditions || 'Thank you for doing business with us.'}
+                  </p>
+                  <p style={{ fontSize: '8px', textAlign: 'right', marginTop: '20px' }}>
+                    For: {companySettings?.companyName || 'COMPANY NAME'}
+                  </p>
+                  {companySettings?.companySign && !imageErrors.sign ? (
+                    <>
+                      <img
+                        src={`${baseUrl}/${companySettings.companySign}`}
+                        alt="Company Signature"
+                        style={{ width: '60px', height: '30px', marginLeft: 'auto' }}
+                        onError={handleImageError('sign')}
+                      />
+                      <p style={{ fontSize: '8px', textAlign: 'right', fontWeight: 'bold' }}>Authorized Signatory</p>
+                    </>
+                  ) : (
+                    <>
+                      <p style={{ fontSize: '8px', textAlign: 'right', color: '#999' }}>[Signature not available]</p>
+                      <p style={{ fontSize: '8px', textAlign: 'right', fontWeight: 'bold' }}>Authorized Signatory</p>
+                    </>
+                  )}
                 </div>
-              ) : (
-                <div style={{ marginTop: '24px', textAlign: 'center' }}>
-                  <p style={{ fontSize: '12px', color: '#999' }}>[Signature not available]</p>
-                  <p style={{ fontSize: '12px', fontWeight: '600' }}>Authorized Signatory</p>
-                </div>
-              )}
+              </div>
             </div>
           </div>
         </div>
@@ -660,6 +986,7 @@ function InvoiceForm() {
                     <th className="px-6 py-4 text-left text-gray-300 font-medium">Type</th>
                     <th className="px-6 py-4 text-left text-gray-300 font-medium">Products</th>
                     <th className="px-6 py-4 text-left text-gray-300 font-medium">Quantities</th>
+                    <th className="px-6 py-4 text-right text-gray-300 font-medium">Total GST</th>
                     <th className="px-6 py-4 text-right text-gray-300 font-medium">Total</th>
                     <th className="px-6 py-4 text-right text-gray-300 font-medium">Received</th>
                     <th className="px-6 py-4 text-right text-gray-300 font-medium">Pending</th>
@@ -674,13 +1001,18 @@ function InvoiceForm() {
                       <td className="px-6 py-4 text-white">
                         {Array.isArray(invoice.products) && invoice.products.length > 0
                           ? invoice.products
-                              .map((p, i) => `${p.name || 'Unknown'} (Stock: ${p.stock || 0})`)
+                              .map((p, i) => `${p.name || 'Unknown'} (Stock: ${p.stock || 0}, GST: ${p.gst || 0}%)`)
                               .join(', ')
                           : '-'}
                       </td>
                       <td className="px-6 py-4 text-white">
                         {Array.isArray(invoice.quantities) && invoice.quantities.length > 0
                           ? invoice.quantities.join(', ')
+                          : '-'}
+                      </td>
+                      <td className="px-6 py-4 text-right text-white">
+                        {Array.isArray(invoice.gstAmounts) && invoice.gstAmounts.length > 0
+                          ? `₹${invoice.gstAmounts.reduce((sum, amt) => sum + (amt || 0), 0).toLocaleString()}`
                           : '-'}
                       </td>
                       <td className="px-6 py-4 text-right text-emerald-400 font-semibold">

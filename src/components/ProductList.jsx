@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Package, Plus, Search, Filter, Edit, Trash2, DollarSign, Box, X } from 'lucide-react';
+import { Package, Plus, Search, Filter, Edit, Trash2, DollarSign, Box, X, Percent } from 'lucide-react';
 import { baseUrl } from '../utils/baseUrl';
-
 
 function ProductList() {
   const [products, setProducts] = useState([]);
-  const [form, setForm] = useState({ name: '', category: '', price: 0, stock: 0 });
+  const [form, setForm] = useState({ name: '', category: '', price: 0, stock: 0, gst: 0, hsn: '' });
   const [editProductId, setEditProductId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -14,7 +13,8 @@ function ProductList() {
   // Filter products based on search term
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.category.toLowerCase().includes(searchTerm.toLowerCase())
+    product.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (product.hsn || '').includes(searchTerm)
   );
 
   // Count products that are in stock (stock > 0)
@@ -24,15 +24,16 @@ function ProductList() {
     const fetchProducts = async () => {
       try {
         const token = localStorage.getItem('token');
-        // const response = await fetch('https://krilo-billing-software-backend.onrender.com/api/products', {
+        if (!token) throw new Error('No authentication token found');
         const response = await fetch(`${baseUrl}/api/products`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        if (!response.ok) throw new Error('Failed to fetch products');
         const data = await response.json();
-        setProducts(data);
+        setProducts(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Error fetching products:', error);
-        setError('Failed to fetch products');
+        setError('Failed to fetch products: ' + error.message);
       }
     };
     fetchProducts();
@@ -43,55 +44,67 @@ function ProductList() {
     setError(null);
     try {
       const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token found');
+
       const stockValue = parseInt(form.stock, 10);
-      if (isNaN(stockValue) || stockValue < 0) {
-        throw new Error('Stock must be a non-negative number');
-      }
+      const priceValue = parseFloat(form.price);
+      const gstValue = parseFloat(form.gst);
+      const hsnValue = form.hsn.trim();
+
+      if (!form.name.trim()) throw new Error('Product name is required');
+      if (!form.category.trim()) throw new Error('Category is required');
+      if (isNaN(priceValue) || priceValue < 0) throw new Error('Price must be a non-negative number');
+      if (isNaN(stockValue) || stockValue < 0) throw new Error('Stock must be a non-negative number');
+      if (isNaN(gstValue) || gstValue < 0) throw new Error('GST must be a non-negative number');
+      if (hsnValue && !/^\d{4,8}$/.test(hsnValue)) throw new Error('HSN code must be a 4-8 digit number');
+
       const payload = {
         name: form.name.trim(),
         category: form.category.trim(),
-        price: parseFloat(form.price),
+        price: priceValue,
         stock: stockValue,
+        gst: gstValue,
+        hsn: hsnValue || undefined, // Send undefined if empty to avoid storing empty string
       };
       console.log('Submitting payload:', payload);
 
       let response;
       if (editProductId) {
         // Update existing product
-        // response = await fetch(`https://krilo-billing-software-backend.onrender.com/api/products/${editProductId}`, {
         response = await fetch(`${baseUrl}/api/products/${editProductId}`, {
           method: 'PUT',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}` 
+            Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
         });
+        if (!response.ok) throw new Error('Failed to update product');
         console.log('Product updated:', await response.json());
       } else {
         // Create new product
-        // response = await fetch('https://krilo-billing-software-backend.onrender.com/api/products', {
         response = await fetch(`${baseUrl}/api/products`, {
           method: 'POST',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}` 
+            Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
         });
+        if (!response.ok) throw new Error('Failed to create product');
         console.log('Product added:', await response.json());
       }
 
       // Refresh product list
-      // const refreshResponse = await fetch('https://krilo-billing-software-backend.onrender.com/api/products', {
       const refreshResponse = await fetch(`${baseUrl}/api/products`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!refreshResponse.ok) throw new Error('Failed to refresh products');
       const refreshedData = await refreshResponse.json();
-      setProducts(refreshedData);
+      setProducts(Array.isArray(refreshedData) ? refreshedData : []);
 
       // Reset form
-      setForm({ name: '', category: '', price: 0, stock: 0 });
+      setForm({ name: '', category: '', price: 0, stock: 0, gst: 0, hsn: '' });
       setEditProductId(null);
     } catch (error) {
       console.error(`Error ${editProductId ? 'updating' : 'adding'} product:`, error);
@@ -107,6 +120,8 @@ function ProductList() {
       category: product.category || '',
       price: product.price || 0,
       stock: product.stock || 0,
+      gst: product.gst || 0,
+      hsn: product.hsn || '',
     });
     setEditProductId(product._id);
     setError(null);
@@ -116,20 +131,21 @@ function ProductList() {
     if (!window.confirm('Are you sure you want to delete this product?')) return;
     try {
       const token = localStorage.getItem('token');
-      // await fetch(`https://krilo-billing-software-backend.onrender.com/api/products/${productId}`, {
-      await fetch(`${baseUrl}/api/products/${productId}`, {
+      if (!token) throw new Error('No authentication token found');
+      const response = await fetch(`${baseUrl}/api/products/${productId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!response.ok) throw new Error('Failed to delete product');
       console.log('Product deleted:', productId);
-      
+
       // Refresh product list
-      // const response = await fetch('https://krilo-billing-software-backend.onrender.com/api/products', {
-      const response = await fetch(`${baseUrl}/api/products`, {
+      const refreshResponse = await fetch(`${baseUrl}/api/products`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await response.json();
-      setProducts(data);
+      if (!refreshResponse.ok) throw new Error('Failed to refresh products');
+      const data = await refreshResponse.json();
+      setProducts(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error deleting product:', error);
       setError(`Failed to delete product: ${error.message}`);
@@ -137,9 +153,14 @@ function ProductList() {
   };
 
   const handleCancel = () => {
-    setForm({ name: '', category: '', price: 0, stock: 0 });
+    setForm({ name: '', category: '', price: 0, stock: 0, gst: 0, hsn: '' });
     setEditProductId(null);
     setError(null);
+  };
+
+  // Calculate total price including GST
+  const calculateTotalPrice = (price, gst) => {
+    return (price + (price * gst) / 100).toLocaleString();
   };
 
   return (
@@ -178,8 +199,8 @@ function ProductList() {
             </div>
             <h2 className="text-xl font-semibold text-white">{editProductId ? 'Edit Product' : 'Add New Product'}</h2>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-300 block">Product Name</label>
               <div className="relative">
@@ -244,12 +265,43 @@ function ProductList() {
             </div>
 
             <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-300 block">GST (%)</label>
+              <div className="relative">
+                <Percent className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <input
+                  type="number"
+                  placeholder="GST Percentage"
+                  value={form.gst}
+                  onChange={(e) => setForm({ ...form, gst: e.target.value })}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:bg-slate-700/70 transition-all duration-300"
+                  min="0"
+                  step="0.01"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-300 block">HSN Code</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="HSN Code (4-8 digits)"
+                  value={form.hsn}
+                  onChange={(e) => setForm({ ...form, hsn: e.target.value })}
+                  className="w-full pl-4 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:bg-slate-700/70 transition-all duration-300"
+                  pattern="\d{4,8}"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
               <label className="text-sm font-medium text-gray-300 block opacity-0">Action</label>
               <div className="flex gap-2">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={handleSubmit}
-                  disabled={loading || !form.name.trim() || !form.category.trim() || isNaN(parseFloat(form.price)) || isNaN(parseInt(form.stock, 10))}
+                  disabled={loading || !form.name.trim() || !form.category.trim() || isNaN(parseFloat(form.price)) || isNaN(parseInt(form.stock, 10)) || isNaN(parseFloat(form.gst))}
                   className="flex-1 bg-gradient-to-r from-blue-500 to-emerald-500 text-white py-3 px-6 rounded-xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? (
@@ -321,6 +373,15 @@ function ProductList() {
                     Price
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    GST (%)
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    HSN Code
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    Total Price
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                     Stock
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
@@ -352,6 +413,15 @@ function ProductList() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-white">₹{product.price.toLocaleString()}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-white">{product.gst}%</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-white">{product.hsn || '-'}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-white">₹{calculateTotalPrice(product.price, product.gst)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-white">{product.stock}</div>

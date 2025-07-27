@@ -5,24 +5,70 @@ import InvoiceForm from './components/InvoiceForm';
 import AccountHistory from './components/AccountHistory';
 import Login from './components/Login';
 import Register from './components/Register';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './index.css'
 import Header from './components/Header';
 import CustomerDetails from './components/CustomerDetails';
 import CustomerForm from './components/CustomerForm';
 import CompanySettingsForm from './components/CompanySettings';
+import ProtectedRoute from './components/ProtectedRoute';
+import { setupAxiosInterceptors, validateToken } from './axiosConfig';
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
-
-  const handleLogin = () => {
-    setIsAuthenticated(true);
-  };
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const handleLogout = () => {
+    console.log('Logging out user...');
     localStorage.removeItem('token');
     setIsAuthenticated(false);
   };
+
+  const handleLogin = () => {
+    console.log('User logged in');
+    setIsAuthenticated(true);
+  };
+
+  // Initialize app and validate token
+  useEffect(() => {
+    const initializeApp = async () => {
+      console.log('Initializing app...');
+      
+      // Setup axios interceptors first
+      setupAxiosInterceptors(handleLogout);
+      
+      // Check if token exists and validate it
+      const token = localStorage.getItem('token');
+      if (token) {
+        console.log('Token found, validating...');
+        const isValid = await validateToken();
+        if (isValid) {
+          console.log('Token is valid, user authenticated');
+          setIsAuthenticated(true);
+        } else {
+          console.log('Token is invalid, user not authenticated');
+          setIsAuthenticated(false);
+        }
+      } else {
+        console.log('No token found, user not authenticated');
+        setIsAuthenticated(false);
+      }
+      
+      setIsLoading(false);
+    };
+
+    initializeApp();
+  }, []);
+
+  // Show loading screen while validating token
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg">Loading...</div>
+      </div>
+    );
+  }
+
   const getCurrentPage = () => {
     const path = window.location.pathname;
     if (path === '/products') return 'products';
@@ -41,35 +87,63 @@ function App() {
           currentPage={getCurrentPage()}
         />
         <Routes>
-          <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <Login onLogin={handleLogin} />} />
-          <Route path="/register" element={isAuthenticated ? <Navigate to="/" /> : <Register onLogin={handleLogin} />} />
+          <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" /> : <Login onLogin={handleLogin} />} />
+          <Route path="/register" element={isAuthenticated ? <Navigate to="/dashboard" /> : <Register onLogin={handleLogin} />} />
           <Route
-            path="/"
-            element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />}
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
           />
           <Route
             path="/products"
-            element={isAuthenticated ? <ProductList /> : <Navigate to="/login" />}
+            element={
+              <ProtectedRoute>
+                <ProductList />
+              </ProtectedRoute>
+            }
           />
           <Route
             path="/invoices"
-            element={isAuthenticated ? <InvoiceForm /> : <Navigate to="/login" />}
+            element={
+              <ProtectedRoute>
+                <InvoiceForm />
+              </ProtectedRoute>
+            }
           />
           <Route
             path="/accounts"
-            element={isAuthenticated ? <AccountHistory /> : <Navigate to="/login" />}
+            element={
+              <ProtectedRoute>
+                <AccountHistory />
+              </ProtectedRoute>
+            }
           />
            <Route
             path="/customer-details"
-            element={isAuthenticated ? <CustomerDetails /> : <Navigate to="/login" />}
+            element={
+              <ProtectedRoute>
+                <CustomerDetails />
+              </ProtectedRoute>
+            }
           />
            <Route
             path="/customer"
-            element={isAuthenticated ? <CustomerForm /> : <Navigate to="/login" />}
+            element={
+              <ProtectedRoute>
+                <CustomerForm />
+              </ProtectedRoute>
+            }
           />
            <Route
             path="/company-settings"
-            element={isAuthenticated ? <CompanySettingsForm /> : <Navigate to="/login" />}
+            element={
+              <ProtectedRoute>
+                <CompanySettingsForm />
+              </ProtectedRoute>
+            }
           />
         </Routes>
       </div>

@@ -128,7 +128,7 @@ const CompanySettingsForm = () => {
         },
       });
       toast.success('Company settings saved successfully');
-      navigate('/'); // Adjust as needed
+      navigate('/dashboard'); // Adjust as needed
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to save company settings');
     } finally {
@@ -391,7 +391,7 @@ const CompanySettingsForm = () => {
           <div className="flex justify-end space-x-4">
             <button
               type="button"
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/dashboard')}
               className="px-6 py-3 bg-slate-600 text-white rounded-xl hover:bg-slate-700 transition-all duration-300 flex items-center"
             >
               <X className="w-5 h-5 mr-2" />
